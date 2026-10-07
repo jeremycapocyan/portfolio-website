@@ -34,3 +34,5 @@ The gallery supports category filtering and accessible native modal dialogs. The
 ## Hosting
 
 The Sites project identity and static export directory are in `.openai/hosting.json`. Dependencies and generated files are excluded from source control. Keep the hosted audience private until ready to share.
+
+Facebook enquiries link directly to the Coach Jeremy Pickleball Facebook Page.

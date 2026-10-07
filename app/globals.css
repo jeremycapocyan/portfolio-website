@@ -29,3 +29,5 @@ h2{font-size:clamp(38px,4vw,58px);line-height:1.12;letter-spacing:-2px;font-weig
 .site-header .brand-mark{flex:0 0 46px;width:46px;height:42px;overflow:visible;position:static}
 .site-header .brand-mark img{position:static;display:block;width:46px;height:42px;max-width:100%;object-fit:contain;mix-blend-mode:normal}
 @media(max-width:700px){.site-header .brand-mark{flex-basis:42px;width:42px;height:38px}.site-header .brand-mark img{width:42px;height:38px}}
+.button-facebook{background:#fff;color:#123e73;gap:10px;padding:13px 18px}.button-facebook:hover{background:#eaf2ff;color:#0c2e59}.contact-actions .phone-link{flex-basis:100%;margin-top:2px}
+@media(max-width:700px){.contact-actions{align-items:flex-start;flex-direction:column;gap:14px}.contact-actions .button{max-width:100%;justify-content:flex-start;gap:10px}.contact-actions .phone-link{flex-basis:auto;margin-top:2px}}
