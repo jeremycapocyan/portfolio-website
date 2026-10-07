@@ -32,7 +32,7 @@ export default function Home() {
  return <>
   <a className="skip-link" href="#main">Skip to content</a>
   <header className="site-header">
-   <a className="brand" href="#" aria-label="Coach Jeremy home"><span className="brand-mark" aria-hidden="true"><img src="/media/brand.png" alt="" /></span><span>COACH JEREMY<small>PICKLEBALL COACH</small></span></a>
+   <a className="brand" href="#" aria-label="Coach Jeremy home"><span className="brand-mark" aria-hidden="true"><img src="/media/coach-mark.png" alt="" /></span><span>COACH JEREMY<small>PICKLEBALL COACH</small></span></a>
    <nav className="desktop-nav" aria-label="Main navigation">{nav.map(([label, href]) => <a href={href} key={href}>{label}</a>)}</nav>
    <a href="#contact" className="button button-lime header-cta">Let’s play <ArrowUpRight size={17} /></a>
    <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} aria-controls="mobile-navigation">{menuOpen ? <X /> : <Menu />}</button>

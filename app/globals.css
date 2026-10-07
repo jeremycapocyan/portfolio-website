@@ -25,3 +25,7 @@ h2{font-size:clamp(38px,4vw,58px);line-height:1.12;letter-spacing:-2px;font-weig
 .eyebrow,.tiny-label,.hero .eyebrow,.practice-copy>.eyebrow,.program-card .tiny-label,.contact-inner .eyebrow,.contact-note,.hero-proof strong,.hero-proof span,.hero-caption>span:last-child,.community-note,.video-label{font-size:12px}
 .gallery-filters button{min-height:44px}.hero-scroll{font-size:10px}.contact-note{color:#e0e8ff}.footer-brand span{font-size:10px}.site-footer>p,.back-top{font-size:12px}
 @media(max-width:700px){.hero .eyebrow{font-size:11px;letter-spacing:1.4px}.hero-content{padding-top:55px}.hero-actions{gap:16px}.watch-button{font-size:12px}.hero-caption>span:last-child{max-width:220px;font-size:11px}.hero-caption .tiny-label{font-size:10px}.gallery-filters button{font-size:12px;padding:9px 13px}.gallery-overlay{font-size:12px}.contact-inner .eyebrow{font-size:10px}.rally-strip{gap:7px}.rally-strip>span{white-space:nowrap}.program-card .tiny-label{font-size:11px}}
+/* Show the complete, tightly cropped paddle mark without clipping its edges. */
+.site-header .brand-mark{flex:0 0 46px;width:46px;height:42px;overflow:visible;position:static}
+.site-header .brand-mark img{position:static;display:block;width:46px;height:42px;max-width:100%;object-fit:contain;mix-blend-mode:normal}
+@media(max-width:700px){.site-header .brand-mark{flex-basis:42px;width:42px;height:38px}.site-header .brand-mark img{width:42px;height:38px}}
