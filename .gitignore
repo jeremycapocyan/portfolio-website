@@ -1,6 +1,8 @@
 node_modules/
 .next/
 out/
+dist/
+.dev.vars
 .sites-runtime/
 *.tsbuildinfo
 .env*

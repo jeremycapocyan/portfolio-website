@@ -1,1 +1,28 @@
-{"name":"coach-jeremy","version":"1.0.0","private":true,"scripts":{"dev":"next dev --hostname 127.0.0.1","build":"next build","start":"next start","typecheck":"tsc --noEmit"},"dependencies":{"next":"latest","react":"latest","react-dom":"latest","lucide-react":"^0.468.0"},"devDependencies":{"typescript":"^5.9.2","@types/node":"^22","@types/react":"^19","@types/react-dom":"^19"},"packageManager":"pnpm@10.17.1"}
+{
+  "name": "coach-jeremy",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.3",
+    "lucide-react": "^0.468.0",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.11",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "pnpm@10.17.1"
+}

@@ -1,0 +1,16 @@
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { resolve, relative } from 'node:path';
+import { build } from 'esbuild';
+const result=spawnSync(process.execPath,['node_modules/next/dist/bin/next','build'],{stdio:'inherit'});
+if(result.status!==0)process.exit(result.status||1);
+const dist=resolve('dist');
+if(relative(process.cwd(),dist)!=='dist')throw new Error('Unexpected output path');
+rmSync(dist,{recursive:true,force:true});
+mkdirSync('dist/server',{recursive:true});mkdirSync('dist/.openai',{recursive:true});
+cpSync('out','dist/client',{recursive:true});
+cpSync('.openai/hosting.json','dist/.openai/hosting.json');
+cpSync('drizzle','dist/.openai/drizzle',{recursive:true});
+const pages=Object.fromEntries([['/','index'],['/admin','admin'],['/booking','booking']].map(([route,file])=>[route,readFileSync(`out/${file}.html`,'utf8')]));
+await build({entryPoints:['worker/index.ts'],outfile:'dist/server/index.js',bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,define:{__PAGES__:JSON.stringify(pages)}});
+console.log('Built Next.js frontend and booking Worker.');
