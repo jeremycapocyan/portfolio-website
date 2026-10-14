@@ -10,6 +10,19 @@ function setup(){const db=database();return{db,env:{DB:db,ADMIN_EMAIL:'coach@exa
 function request(path:string,body?:unknown,admin=false,method=body?'POST':'GET',token?:string){return new Request(origin+path,{method,headers:{Origin:origin,'Content-Type':'application/json',...(admin?{'oai-authenticated-user-id':'owner','oai-authenticated-user-email':'coach@example.com'}:{}),...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});}
 async function slot(env:Env,start=Date.now()+48*HOUR){const input={startAt:new Date(start).toISOString(),endAt:new Date(start+HOUR).toISOString(),state:'open'};const response=await handleApi(request('/api/admin/slots',input,true),env);assert.equal(response.status,201);return{...(await response.json()),input};}
 const client=(slotId:string)=>({slotId,name:'Test Player',email:'player@example.com',phone:'09171234567',players:2,location:'Test court in Manila',consent:true});
+test('admin hours appear on the client calendar and disappear when blocked',async()=>{
+ const{env,db}=setup();try{
+  const start=Date.now()+72*HOUR;
+  const s=await slot(env,start);
+  const month=new Date(start+8*HOUR).toISOString().slice(0,7);
+  const availability=async()=> (await(await handleApi(request(`/api/availability?month=${month}`),env)).json()).slots;
+  assert.deepEqual((await availability()).map((entry:any)=>[entry.id,entry.start_at,entry.end_at]),[[s.id,start,start+HOUR]]);
+  assert.equal((await handleApi(request(`/api/admin/slots/${s.id}`,{...s.input,state:'blocked'},true,'PATCH'),env)).status,200);
+  assert.deepEqual(await availability(),[]);
+  assert.equal((await handleApi(request(`/api/admin/slots/${s.id}`,{...s.input,state:'open'},true,'PATCH'),env)).status,200);
+  assert.equal((await availability())[0].id,s.id);
+ }finally{db.close();}
+});
 async function reserve(env:Env,id:string){const response=await handleApi(request('/api/reservations',client(id)),env);assert.equal(response.status,201);return response.json();}
 async function quoted(env:Env,id:string){const r=await reserve(env,id);const response=await handleApi(request(`/api/admin/reservations/${r.id}/quote`,{totalPHP:1100},true),env);assert.equal(response.status,200);const row=await env.DB.prepare('SELECT * FROM reservations WHERE id=?').bind(r.id).first<any>();return{...r,payment:{provider:'test-provider',paymentId:crypto.randomUUID(),reservationId:r.id,quoteId:row.quote_id,amount:110000,currency:'PHP' as const,status:'paid' as const}};}
 test('admin identity and mutation origin are enforced',async()=>{const{env,db}=setup();try{assert.equal((await handleApi(request('/api/admin/dashboard'),env)).status,401);const wrong=request('/api/admin/dashboard',undefined,true);wrong.headers.set('oai-authenticated-user-email','other@example.com');assert.equal((await handleApi(wrong,env)).status,403);const cross=request('/api/admin/slots',{},true);cross.headers.set('Origin','https://evil.example');assert.equal((await handleApi(cross,env)).status,403);assert.equal((await handleApi(request('/api/admin/dashboard',undefined,true),env)).status,200);}finally{db.close();}});
