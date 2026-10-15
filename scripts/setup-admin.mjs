@@ -13,9 +13,13 @@ async function hidden(prompt){
   };process.stdin.on('keypress',listener);
  });
 }
-const password=await hidden('Choose your admin password (16–256 characters, hidden): ');
-if(password.length<16||password.length>256)throw new Error('Use a password between 16 and 256 characters.');
-if(password!==await hidden('Confirm password (hidden): '))throw new Error('Passwords do not match.');
+let password;
+while(true){
+ password=await hidden('Choose your admin password (16–256 characters, hidden): ');
+ if(password.length<16||password.length>256){console.log('Please use 16–256 characters. Try again below.');continue;}
+ if(password!==await hidden('Confirm password (hidden): ')){console.log('Passwords did not match. Try again below.');continue;}
+ break;
+}
 const salt=randomBytes(16).toString('hex');
 const values=`ADMIN_EMAIL=yourvajeremyalonzo@gmail.com\nALERT_EMAIL=yourvajeremyalonzo@gmail.com\nSITE_URL=https://coach-jeremy.vercel.app\nADMIN_PASSWORD_HASH=scrypt:${salt}:${scryptSync(password,salt,64).toString('hex')}\nADMIN_SESSION_SECRET=${randomBytes(48).toString('base64url')}\n`;
 mkdirSync('.sites-runtime',{recursive:true});
