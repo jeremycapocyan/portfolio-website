@@ -7,6 +7,7 @@ import { api, dateKey, dateTime, FACEBOOK, money, time } from './booking-ui';
 type Slot = { id: string; start_at: number; end_at: number };
 type Held = { id: string; token: string; expiresAt: number };
 export default function BookingCalendar() {
+  const [hours,setHours]=useState(2);
   const [month, setMonth] = useState(''), [slots, setSlots] = useState<Slot[]>([]), [day, setDay] = useState(''), [slotId, setSlotId] = useState('');
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [refresh, setRefresh] = useState(0), [busy, setBusy] = useState(false), [players, setPlayers] = useState(1), [held, setHeld] = useState<Held | null>(null);
   useEffect(() => { const today=dateKey(Date.now()); setMonth(today.slice(0, 7)); setDay(today); }, []);
@@ -17,7 +18,7 @@ export default function BookingCalendar() {
       controller?.abort();
       const current = new AbortController(); controller=current;
       setLoading(true); setError('');
-      api<{ slots: Slot[] }>(`/api/availability?month=${month}`, { signal: current.signal }).then(data => {
+      api<{ slots: Slot[] }>(`/api/availability?month=${month}&hours=${hours}`, { signal: current.signal }).then(data => {
         if(current.signal.aborted)return;
         setSlots(data.slots);
         setSlotId(previous => data.slots.some(slot => slot.id===previous) ? previous : '');
@@ -29,7 +30,7 @@ export default function BookingCalendar() {
     document.addEventListener('visibilitychange',whenVisible);
     const interval=window.setInterval(whenVisible,30000);
     return () => {controller?.abort();window.clearInterval(interval);window.removeEventListener('focus',whenVisible);document.removeEventListener('visibilitychange',whenVisible);};
-  }, [month, refresh]);
+  }, [month, refresh, hours]);
   const selected = slots.find(s => s.id === slotId);
   const days = month ? new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate() : 0;
   const offset = month ? new Date(`${month}-01T12:00:00Z`).getUTCDay() : 0;
@@ -46,7 +47,7 @@ export default function BookingCalendar() {
     <div className="section-heading"><div><p className="eyebrow dark-eyebrow">YOUR NEXT SESSION</p><h2>Make time<br/><em>for your game.</em></h2></div><p>Choose an open session. I’ll review your court<br className="desktop-break" /> location and confirm the final coaching rate.</p></div>
     {held ? <div className="reservation-success" role="status"><CalendarDays size={32}/><h3>Your time is on hold.</h3><p>This is a pending reservation, not a confirmed booking. Your hold ends {dateTime(held.expiresAt)} (Philippine time). Only verified payment confirms your session.</p><p><strong>Save your private reservation link.</strong> Use it to view your quote and booking status. Payment is not connected yet; message me to discuss your session.</p><a className="button button-lime" href={privateLink}>View & save my reservation <ArrowUpRight size={18}/></a><a className="text-link" href={FACEBOOK} target="_blank" rel="noopener noreferrer">Message Coach Jeremy ↗</a></div> : <div className="booking-grid">
       <div className="calendar-panel"><div className="calendar-toolbar"><h3>{month ? new Date(`${month}-15T12:00:00Z`).toLocaleDateString('en-PH', { month: 'long', year: 'numeric', timeZone: 'Asia/Manila' }) : 'Session calendar'}</h3><div><button type="button" aria-label="Previous month" disabled={!month || month <= dateKey(Date.now()).slice(0, 7)} onClick={() => changeMonth(-1)}><ChevronLeft size={20}/></button><button type="button" aria-label="Next month" disabled={!month || month >= dateKey(Date.now() + 365 * 86400000).slice(0, 7)} onClick={() => changeMonth(1)}><ChevronRight size={20}/></button></div></div>
-      <p className="field-note"><Clock3 size={14}/> All times in the Philippines (UTC+8)</p>
+      <p className="field-note"><Clock3 size={14}/> Daily 1 PM–8 PM · Philippine time (UTC+8)</p><label className="session-duration">Session length<select value={hours} onChange={e=>{setHours(Number(e.target.value));setSlotId('');setSlots([]);}}>{[2,3,4,5,6,7].map(h=><option key={h} value={h}>{h} hours{h===2?' (minimum)':''}</option>)}</select></label>
       <div className="calendar-week" aria-hidden="true">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <span key={d}>{d}</span>)}</div>
       <div className="calendar-days" role="group" aria-label="Choose a date to see available hours">{Array.from({length:offset}, (_,i) => <span key={`empty${i}`}/>)}{Array.from({length:days}, (_,i) => { const key = `${month}-${String(i+1).padStart(2,'0')}`; return <button type="button" key={key} disabled={key < dateKey(Date.now())} className={day === key ? 'selected' : ''} aria-pressed={day === key} aria-controls="available-hours" aria-label={`${key}${availableDays.has(key) ? ', sessions available' : ', no open hours'}`} onClick={() => { setDay(key); setSlotId(''); }}>{i+1}{availableDays.has(key) && <span className="availability-dot"/>}</button>; })}</div>
       <p className="calendar-legend"><span className="availability-dot"/> Open coaching sessions</p>

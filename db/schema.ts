@@ -38,3 +38,7 @@ export const emailOutbox = sqliteTable('email_outbox', {
 export const rateLimits = sqliteTable('rate_limits', {
   key: text('key').primaryKey(), count: integer('count').notNull(), windowStart: integer('window_start').notNull(),
 });
+
+export const timeBlocks = sqliteTable('time_blocks', {
+  id: text('id').primaryKey(), startAt: integer('start_at').notNull(), endAt: integer('end_at').notNull(),
+}, t => [index('time_blocks_start').on(t.startAt), check('time_block_duration',sql`${t.endAt} > ${t.startAt}`)]);

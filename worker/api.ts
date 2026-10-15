@@ -2,6 +2,7 @@ import { ACTIVE, HOLD, HOUR, HttpError, estimatedTotal, expiresStatement, sessio
 import { emailReady, deliverEmails } from './email';
 import { paymentProvider, requirePaymentProvider } from './payment-provider';
 import { confirmVerifiedPayment } from './payments';
+import { availability, dailySlot, DEFAULT_HOURS, noConflicts, withinCoachingHours } from './availability';
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
 function admin(request: Request, env: Env) {
@@ -31,8 +32,10 @@ function text(data: Record<string,unknown>, key: string, min=1, max=200) {
 function slotInput(data: Record<string,unknown>) {
   const start=Date.parse(text(data,'startAt')), end=Date.parse(text(data,'endAt'));
   const state=data.state;
-  if(!Number.isFinite(start)||!Number.isFinite(end)||start<Date.now()+HOUR||start>Date.now()+366*24*HOUR||end-start<HOUR||end-start>12*HOUR||(end-start)%(30*60000)!==0) throw new HttpError(400,'Choose a future session of 1–12 hours, in 30-minute increments, at least an hour from now.');
+  if(!Number.isFinite(start)||!Number.isFinite(end)||start<Date.now()+HOUR||start>Date.now()+366*24*HOUR||end-start<(state==='blocked'?HOUR/2:2*HOUR)||end-start>12*HOUR||(end-start)%(30*60000)!==0) throw new HttpError(400,'Choose a future session of at least 2 hours (or a block of at least 30 minutes), at least an hour from now.');
   if(state!=='open'&&state!=='blocked') throw new HttpError(400,'Choose open or blocked.');
+  if(state==='open'&&!withinCoachingHours(start,end))throw new HttpError(400,'Open sessions must be between 1:00 PM and 8:00 PM, with a two-hour minimum.');
+  if(state==='open'&&(end-start)%HOUR!==0)throw new HttpError(400,'Choose a session length of 2–7 whole hours.');
   return {start,end,state};
 }
 async function rateLimit(request: Request, env: Env) {
@@ -63,12 +66,8 @@ export async function handleApi(request: Request, env: Env, context?: {waitUntil
     if(path.startsWith('/api/admin/')) admin(request,env);
     await expiresStatement(env).run();
     if(path==='/api/availability' && method==='GET') {
-      const month=url.searchParams.get('month')||'';
-      if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new HttpError(400,'Choose a valid month.');
-      const [year,monthNumber]=month.split('-').map(Number);
-      const start=Date.UTC(year,monthNumber-1,1)-8*HOUR, end=Date.UTC(year,monthNumber,1)-8*HOUR;
-      const slots=await statement(env,`SELECT s.id,s.start_at,s.end_at FROM slots s WHERE s.state='open' AND s.start_at>=? AND s.start_at<? AND s.start_at>? AND NOT EXISTS (SELECT 1 FROM reservations r WHERE r.slot_id=s.id AND r.status IN ${ACTIVE}) ORDER BY s.start_at`,start,end,Date.now()+HOUR).all<Slot>();
-      return json({slots:slots.results,timeZone:'Asia/Manila',paymentsReady:Boolean(paymentProvider(env)),emailReady:emailReady(env)});
+      const result=await availability(env,url.searchParams.get('month')||'',Number(url.searchParams.get('hours')||2));
+      return json({...result,paymentsReady:Boolean(paymentProvider(env)),emailReady:emailReady(env)});
     }
     if(path==='/api/reservations'&&method==='POST') {
       await rateLimit(request,env);
@@ -78,10 +77,16 @@ export async function handleApi(request: Request, env: Env, context?: {waitUntil
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400,'Please enter a valid email address.');
       if(!/^[+\d\s()\-]+$/.test(phone)) throw new HttpError(400,'Please enter a valid phone number.');
       const players=Number(data.players); if(!Number.isInteger(players)||players<1||players>8||data.consent!==true) throw new HttpError(400,'Choose 1–8 players and accept the reservation terms.');
+      const generated=dailySlot(slotId);
+      if(generated){
+        if(generated.start_at<=Date.now()+HOUR||generated.start_at>Date.now()+366*24*HOUR)throw new HttpError(409,'That session is outside the booking window.');
+        await statement(env,"INSERT INTO slots (id,start_at,end_at,state) VALUES (?,?,?,'open') ON CONFLICT(id) DO NOTHING",generated.id,generated.start_at,generated.end_at).run();
+      }
       const slot=await statement(env,'SELECT * FROM slots WHERE id=?',slotId).first<Slot>();
+      if(slot&&!withinCoachingHours(slot.start_at,slot.end_at))throw new HttpError(400,'Sessions must be at least two hours and between 1:00 PM and 8:00 PM.');
       const now=Date.now(); if(!slot||slot.start_at<=now+HOUR) throw new HttpError(409,'That session is no longer available. Please choose another.');
       const id=crypto.randomUUID(), token=crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-',''),expiry=Math.min(now+HOLD,slot.start_at),estimate=estimatedTotal(players,slot.end_at-slot.start_at);
-      const statements=[expiresStatement(env,now),statement(env,`INSERT INTO reservations (id,slot_id,token_hash,name,email,phone,location,players,estimated_total,status,expires_at,created_at) SELECT ?,s.id,?,?,?,?,?,?,?,'pending_review',?,? FROM slots s WHERE s.id=? AND s.state='open' AND s.start_at>? AND s.start_at=? AND s.end_at=? AND NOT EXISTS (SELECT 1 FROM reservations r WHERE r.slot_id=s.id AND r.status IN ${ACTIVE})`,id,await sha256(token),name,email,phone,location,players,estimate,expiry,now,slotId,now+HOUR,slot.start_at,slot.end_at)];
+      const statements=[expiresStatement(env,now),statement(env,`INSERT INTO reservations (id,slot_id,token_hash,name,email,phone,location,players,estimated_total,status,expires_at,created_at) SELECT ?,s.id,?,?,?,?,?,?,?,'pending_review',?,? FROM slots s WHERE s.id=? AND s.state='open' AND s.start_at>? AND s.start_at=? AND s.end_at=? AND ${noConflicts}`,id,await sha256(token),name,email,phone,location,players,estimate,expiry,now,slotId,now+HOUR,slot.start_at,slot.end_at)];
       if(env.ALERT_EMAIL) statements.push(statement(env,"INSERT INTO email_outbox (id,reservation_id,recipient,subject,body,state,attempts) SELECT ?,id,?,?,?,'pending',0 FROM reservations WHERE id=?",`${id}:alert`,env.ALERT_EMAIL,'New coaching reservation — review required',`New reservation ${id}\n${name}\n${email}\n${phone}\n${sessionTime(slot.start_at)}\nPlayers: ${players}\nCourt: ${location}\nReview in your Coach Jeremy admin dashboard. This is not a confirmed booking.`,id));
       let result; try {result=await env.DB.batch(statements);} catch(error) {if(String(error).includes('UNIQUE')) throw new HttpError(409,'Someone just reserved that session. Please choose another.'); throw error;}
       if(!result[1].meta.changes) throw new HttpError(409,'That session is no longer available. Please choose another.');
@@ -104,10 +109,25 @@ export async function handleApi(request: Request, env: Env, context?: {waitUntil
       }
     }
     if(path==='/api/admin/dashboard'&&method==='GET') {
-      const slots=await statement(env,`SELECT s.*,r.id AS reservation_id,r.status AS reservation_status FROM slots s LEFT JOIN reservations r ON r.slot_id=s.id AND r.status IN ${ACTIVE} WHERE s.end_at>? ORDER BY s.start_at LIMIT 500`,Date.now()-30*24*HOUR).all();
+      const slots=await statement(env,`SELECT s.*,r.id AS reservation_id,r.status AS reservation_status FROM slots s LEFT JOIN reservations r ON r.slot_id=s.id AND r.status IN ${ACTIVE} WHERE s.end_at>? AND (s.id NOT LIKE 'daily-%' OR r.id IS NOT NULL) ORDER BY s.start_at LIMIT 500`,Date.now()-30*24*HOUR).all();
       const bookings=await statement(env,'SELECT r.id,r.name,r.email,r.phone,r.location,r.players,r.status,r.estimated_total,r.quoted_total,r.expires_at,r.created_at,s.start_at,s.end_at FROM reservations r JOIN slots s ON s.id=r.slot_id ORDER BY r.created_at DESC LIMIT 200').all();
       const emails=await statement(env,"SELECT id,reservation_id,recipient,subject,state,attempts FROM email_outbox WHERE state!='sent' ORDER BY rowid DESC LIMIT 100").all();
-      return json({slots:slots.results,reservations:bookings.results,emails:emails.results,paymentsReady:Boolean(paymentProvider(env)),emailReady:emailReady(env),adminEmail:env.ADMIN_EMAIL});
+      const blocks=await statement(env,'SELECT id,start_at,end_at FROM time_blocks WHERE end_at>? ORDER BY start_at',Date.now()).all();
+      return json({defaults:DEFAULT_HOURS,blocks:blocks.results,slots:slots.results,reservations:bookings.results,emails:emails.results,paymentsReady:Boolean(paymentProvider(env)),emailReady:emailReady(env),adminEmail:env.ADMIN_EMAIL});
+    }
+    if(path==='/api/admin/blocks'&&method==='POST') {
+      const data=await body(request), start=Date.parse(text(data,'startAt')),end=Date.parse(text(data,'endAt'));
+      if(!Number.isFinite(start)||!Number.isFinite(end)||end<=Date.now()||end<=start||end-start>31*24*HOUR||start>Date.now()+366*24*HOUR||start<Date.now()-24*HOUR)throw new HttpError(400,'Choose a current or future time range, up to 31 days.');
+      const id=crypto.randomUUID();
+      const result=await statement(env,`INSERT INTO time_blocks (id,start_at,end_at) SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM reservations r JOIN slots s ON s.id=r.slot_id WHERE r.status IN ${ACTIVE} AND s.start_at<? AND s.end_at>?)`,id,start,end,end,start).run();
+      if(!result.meta.changes)throw new HttpError(409,'This range overlaps a reservation. Cancel an unpaid reservation before blocking its time.');
+      return json({id},201);
+    }
+    const blockMatch=path.match(/^\/api\/admin\/blocks\/([a-f0-9-]{36})$/);
+    if(blockMatch&&method==='DELETE'){
+      const result=await statement(env,'DELETE FROM time_blocks WHERE id=?',blockMatch[1]).run();
+      if(!result.meta.changes)throw new HttpError(404,'This block was already removed.');
+      return json({reopened:true});
     }
     if(path==='/api/admin/slots'&&method==='POST') {
       const data=slotInput(await body(request)), id=crypto.randomUUID();
