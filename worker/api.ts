@@ -53,6 +53,7 @@ async function authorizeReservation(request: Request,env:Env,id:string) {
 }
 export async function handleApi(request: Request, env: Env, context?: {waitUntil(promise:Promise<unknown>):void}): Promise<Response> {
   try {
+    if(new URL(request.url).pathname==='/api/auth/config'&&request.method==='GET')return json({mode:'sites',ready:true});
     if(!env.DB) throw new HttpError(503,'The booking calendar is temporarily unavailable. Please message Coach Jeremy.');
     const url=new URL(request.url), path=url.pathname, method=request.method;
     const sendEmails=() => { const promise=deliverEmails(env).catch(()=>({sent:0,connected:false})); if(context) context.waitUntil(promise); return promise; };

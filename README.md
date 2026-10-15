@@ -1,6 +1,6 @@
 # Coach Jeremy Capocyan
 
-Next.js portfolio and booking calendar for a PhPA Level 1 certified pickleball coach. React, TypeScript, Lucide, custom CSS, and a Cloudflare-compatible Worker with persistent Sites D1 storage.
+Next.js portfolio and booking calendar for a PhPA Level 1 certified pickleball coach. React, TypeScript, Lucide, custom CSS, and a shared booking engine served by Next.js API routes on Vercel with persistent Turso/libSQL storage.
 
 ## Local development
 
@@ -18,11 +18,11 @@ Open http://127.0.0.1:3000. The dev script starts Next.js on port 3000 and a loc
 
 For local coach access, add `LOCAL_ADMIN_ENABLED=true` to ignored `.env.local`, then restart dev. This explicitly enables admin access only on the loopback developer server; the production Worker never implements this bypass. Never expose these dev servers through a tunnel. Local development does not send emails or accept payments.
 
-The build exports Next.js and bundles the API into `dist/server/index.js`. Assets are in `dist/client`; migration metadata is in `dist/.openai/drizzle`. The full app needs a Worker and D1. Deploying only `out/` will not provide bookings. `next start` is not used with static export.
+The build produces a full Next.js application in `.next`, including dynamic `/api/*` routes. `vercel.json` selects this output; do not deploy `out/` or `dist/`. Use `pnpm start` for a production server with the production environment configured.
 
 ## Coach workflow
 
-1. Open `/admin` on the hosted site. Sign in using the ChatGPT account with email **yourvajeremyalonzo@gmail.com**. Every admin API route enforces this allowlist using trusted Sites identity headers.
+1. Open `/admin` on Vercel. Sign in with **yourvajeremyalonzo@gmail.com** and the admin password configured below. Vercel uses signed, eight-hour, HttpOnly/Secure cookies and strips visitor-supplied Sites identity headers. Sign-in attempts are limited in the database; changing the password hash or session secret invalidates existing sessions.
 2. Every day is open automatically from **1 PM to 8 PM, Philippine time (UTC+8)**. Clients choose a duration of **2–7 whole hours** and a start time on the hour. The latest start for a two-hour session is 6 PM. Booking requires at least one hour of notice. No manual opening of each date is needed.
 3. Use **Control your availability** to select a date and block specific hours or an entire day. **Reopen these hours** removes a block. The admin preview and client calendar use the same availability API/database. Overlapping reservations and blocks hide every affected start time, including longer sessions. Active reservations cannot be blocked; cancel an unpaid request first. Existing custom entries remain under Additional sessions. Confirmed cancellations/refunds need a future provider-specific workflow.
 4. Review client details and court location, then set the **total group quote**. Quotes are immutable; cancel and re-reserve if the agreement changes. Ask the client to refresh their private link to view the quote.
@@ -51,7 +51,7 @@ Before accepting real payments:
 
 ## Email connection
 
-`worker/email.ts` has a Resend HTTP adapter and persistent outbox. Configure these runtime values in Sites:
+`worker/email.ts` has a Resend HTTP adapter and persistent outbox. Configure these runtime values in Vercel Production settings:
 
 | Variable | Purpose |
 | --- | --- |
@@ -69,10 +69,20 @@ Retries use stable idempotency keys. Attempts older than 23 hours require manual
 
 ## Hosting and migrations
 
-`.openai/hosting.json` preserves the Sites project and declares D1 binding `DB`. Production schema changes come only from reviewed Drizzle migrations. Run `pnpm exec drizzle-kit generate` after editing `db/schema.ts`. Keep applied SQL and metadata immutable; append later migrations. Request handlers do not create tables.
+Vercel uses Turso/libSQL through `server/database.ts`. Run `pnpm db:migrate` with the Turso credentials to apply the reviewed SQL in `drizzle/`. Migrations are transactional and recorded with checksums. Keep applied SQL immutable; append later migrations. Request handlers do not create tables. Existing Sites D1 data is separate and is not automatically migrated.
 
-The hosted audience remains private until separately shared with clients. Production must run behind Sites, which owns sign-in and trusted identity headers; do not expose the Worker directly with client-supplied identity headers. Another hosting provider requires replacing this auth integration. Customer booking details are private server-side data.
+Vercel is the primary hosting target. The old Sites deployment and its access policy are unchanged; `.openai/hosting.json` and the Worker entrypoint remain as historical integration files. The current build targets Vercel, not Sites. Customer booking details stay behind the admin session or a private reservation token.
 
 Integration tests use real in-memory SQLite and the generated migration. They cover authorization, origin checks, month boundaries, overlapping slots, competing/expired reservations, payment validation/replay, and email retries. Tests never send real emails or charge money.
 
 Default availability is generated by `worker/availability.ts`. Blocks persist in `time_blocks`; no recurring database seed is required. Generated sessions are materialized only when a client requests a hold. The existing booking/payment records remain intact. Local and hosted databases remain separate.
+
+## Vercel activation
+
+1. Create a Turso **libSQL/SQLite** database. Add `TURSO_DATABASE_URL` (`libsql://...`) and its database-scoped `TURSO_AUTH_TOKEN` to Vercel Production environment variables. Do not prefix secrets with `NEXT_PUBLIC_`.
+2. Securely put the same two values in ignored `.env.local` or your shell environment, then run `pnpm db:migrate`. This applies schema only; it does not import old local/Sites reservations.
+3. Run `pnpm admin:setup` in an interactive terminal. Choose and confirm a password of at least 16 characters. The script writes a salted scrypt password hash and random session secret to Git-ignored `.sites-runtime/vercel-admin.env`; it never stores your password. Import those values into Vercel Production. Keep that file private.
+4. Required values are `ADMIN_PASSWORD_HASH`, `ADMIN_SESSION_SECRET`, `ADMIN_EMAIL`, `ALERT_EMAIL`, and `SITE_URL=https://coach-jeremy.vercel.app`, alongside the two Turso values. Use separate databases/secrets for preview deployments.
+5. Redeploy the `main` branch. Verify `/api/availability?month=YYYY-MM&hours=2` returns JSON, sign in at `/admin`, and check a block/reopen against the client calendar. Missing configuration returns a clear 503 instead of invented availability.
+
+For password recovery, rerun `pnpm admin:setup`, replace the hash and session secret in Vercel, and redeploy. There is no email-based password reset. Payment and email activation remain separate as described above.

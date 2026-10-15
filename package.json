@@ -7,9 +7,12 @@
     "build": "node scripts/build.mjs",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/test.mjs"
+    "test": "node scripts/test.mjs",
+    "db:migrate": "node scripts/migrate-turso.mjs",
+    "admin:setup": "node scripts/setup-admin.mjs"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "drizzle-orm": "^0.45.3",
     "lucide-react": "^0.468.0",
     "next": "latest",
